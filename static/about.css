@@ -205,4 +205,40 @@ body {
         max-width: 100%;
         padding: 0 10px;
     }
+}
+
+.about-export-section {
+    background: #F4E3B2; /* Warna latar belakang */
+    width: 100vw;
+    min-width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding: 50px 0 40px 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.about-export-content {
+    max-width: 1200px;
+    width: 100%;
+    padding: 0 50px;
+    box-sizing: border-box;
+}
+
+.about-export-title {
+    color: #2F4F4F; /* Warna teks */
+    font-size: 1.5em;
+    font-family: 'Roboto', Arial, sans-serif;
+    font-weight: bold;
+    margin-top: 0;
+    margin-bottom: 24px;
+}
+
+.about-export-desc {
+    color: #5B4636; /* Warna teks */
+    font-size: 1.15em;
+    line-height: 1.5;
+    margin: 0;
 } 
