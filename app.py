@@ -1,13 +1,23 @@
 # Import Library
-from flask import Flask, render_template, request, jsonify
-import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
-from scipy.sparse import csr_matrix
 import csv
 from datetime import datetime
 
+import pandas as pd
+from flask import Flask, jsonify, render_template, request, send_file
+from scipy.sparse import csr_matrix
+from sklearn.metrics.pairwise import cosine_similarity
+from supabase import create_client
+
 # Setup Flask
 app = Flask(__name__)
+
+# --- Konfigurasi Supabase ---
+url = "https://lqskpaecrquwwsezlwcb.supabase.co"
+key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxxc2twYWVjcnF1d3dzZXpsd2NiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1Mjg3MzYwNCwiZXhwIjoyMDY4NDQ5NjA0fQ.b7iOyA5lRdV-Q11PuPDrTnsW9ho45kk1D9TzK_aAqEU"  # pakai service role key
+supabase = create_client(url, key)
+
+bucket = "rekomendasi"
+file_name = "Penjualan_warmindo.csv"
 
 # Load Dataset
 df = pd.read_csv('Penjualan warmindo.csv')
@@ -26,8 +36,31 @@ user_item_matrix = df.pivot_table(index='customer_id',
 sparse_matrix = csr_matrix(user_item_matrix.values)
 item_sim = cosine_similarity(sparse_matrix.T)
 item_sim_df = pd.DataFrame(item_sim, 
-                         index=user_item_matrix.columns, 
-                         columns=user_item_matrix.columns)
+                        index=user_item_matrix.columns, 
+                        columns=user_item_matrix.columns)
+
+def load_csv_from_supabase():
+    """Download CSV dari Supabase bucket"""
+    try:
+        res = supabase.storage.from_(bucket).download(file_name)
+        return pd.read_csv(io.BytesIO(res))
+    except Exception as e:
+        print("Error load csv:", e)
+        return pd.DataFrame(columns=[
+            "id", "invoice_id", "tanggal", "customer_id",
+            "menu", "jenis_produk", "kategori_produk",
+            "quantity", "harga_jual", "jenis_pembayaran",
+            "jenis_pesanan", "nilai_penjualan", "nama_produk"
+        ])
+
+def save_csv_to_supabase(df):
+    """Upload CSV balik ke Supabase"""
+    csv_bytes = df.to_csv(index=False).encode()
+    supabase.storage.from_(bucket).upload(
+        file_name,
+        csv_bytes,
+        {"upsert": True}
+    )
 
 # Fungsi Rekomendasi dengan Filter Kategori
 def rekomendasi_produk(nama_produk, kategori=None, top_n=6):
@@ -75,10 +108,10 @@ def index():
         if kategori_filter:
             rekomendasi = rekomendasi_produk_by_kategori(kategori_filter, df, top_n=6)
     return render_template("index.html", 
-                         rekomendasi=rekomendasi, 
-                         kategori_list=kategori_list,
-                         kategori_terpilih=kategori_filter,
-                         ratings=ratings_db)
+                        rekomendasi=rekomendasi, 
+                        kategori_list=kategori_list,
+                        kategori_terpilih=kategori_filter,
+                        ratings=ratings_db)
 
 # API untuk menyimpan rating
 @app.route("/rate", methods=["POST"])
@@ -106,12 +139,15 @@ def favorit():
     menu_favorit = request.form.get("menu_favorit")
     kategori = request.form.get("kategori")
     quantity = request.form.get("quantity", 1)
+
+    # validasi quantity
     try:
         quantity = int(quantity)
         if quantity < 1:
             quantity = 1
     except:
         quantity = 1
+
     if not menu_favorit or not kategori:
         return "Data tidak lengkap", 400
 
@@ -125,12 +161,22 @@ def favorit():
     new_id = last_id + 1
     new_invoice = last_invoice + 1
     tanggal = datetime.now().strftime('%m/%d/%y')
-    customer_id = 9999  # Bisa diganti dengan sistem login/user id jika ada
-    # Cari harga_jual dari data df
-    harga_row = df[df['nama_produk'] == menu_favorit].iloc[0]
-    harga_jual = harga_row['harga_jual']
-    jenis_produk = harga_row['jenis_produk']
-    kategori_produk = harga_row['kategori_produk'] if 'kategori_produk' in harga_row else 'makanan'
+    customer_id = 9999
+
+    # Cari produk di dataframe
+    filtered = df[df['nama_produk'].str.lower() == menu_favorit.lower()] if 'nama_produk' in df.columns else None
+
+    if filtered is None or filtered.empty:
+        return f"Menu '{menu_favorit}' tidak ditemukan di data produk", 400
+
+    # sekarang pasti ada baris
+    harga_row = filtered.iloc[0]
+
+    # amanin akses kolom
+    harga_jual = harga_row['harga_jual'] if 'harga_jual' in filtered.columns else 0
+    jenis_produk = harga_row['jenis_produk'] if 'jenis_produk' in filtered.columns else 'unknown'
+    kategori_produk = harga_row['kategori_produk'] if 'kategori_produk' in filtered.columns else kategori
+
     jenis_pembayaran = 'FAVORIT'
     jenis_pesanan = 'Favorit'
     nilai_penjualan = harga_jual * quantity
@@ -141,11 +187,15 @@ def favorit():
         writer.writerow([
             new_id, new_invoice, tanggal, customer_id, menu_favorit, jenis_produk, kategori_produk, quantity, harga_jual, jenis_pembayaran, jenis_pesanan, nilai_penjualan
         ])
-    return "<script>alert('Terima kasih, menu favorit Anda sudah disimpan!');window.location='/'</script>"
 
+    return "<script>alert('Terima kasih, menu favorit Anda sudah disimpan');window.location='/'</script>"
 @app.route("/about")
 def about():
     return render_template("about.html")
+
+@app.route("/download-csv")
+def download_csv():
+    return send_file("Penjualan warmindo.csv", as_attachment=True)
 
 # Run App
 if __name__ == "__main__":

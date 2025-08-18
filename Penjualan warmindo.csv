@@ -519,3 +519,4 @@ id,invoice_id,tanggal_transaksi,customer_id,nama_produk,jenis_produk,kategori_pr
 519,519,08/12/25,9999,Indomie Baso Sapi,mie-kuah,makanan,1,9000,FAVORIT,Favorit,9000
 520,520,08/12/25,9999,Indomie Goreng Pedas,mie-goreng,makanan,3,9000,FAVORIT,Favorit,27000
 521,521,08/12/25,9999,Indomie Rasa Mi Kocok Bandung,mie-kuah,makanan,2,10000,FAVORIT,Favorit,20000
+522,522,08/18/25,9999,Indomie Goreng Spesial,mie-goreng,makanan,2,9000,FAVORIT,Favorit,18000
